@@ -3,6 +3,9 @@ name = "mesh-tui"
 version = "0.1.0"
 description = "TUI para redes Meshtastic usando o SDK Python e Textual"
 requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Adson Alcântara" }]
 dependencies = [
     "meshtastic>=2.5",
     "textual>=0.80",
@@ -12,7 +15,7 @@ dependencies = [
 mesh-tui = "mesh_tui.app:main"
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]

@@ -116,3 +116,7 @@ simulada — cobrem conexão, reconexão, ACKs, histórico, DMs e o painel de de
 Fluxo de eventos: o SDK publica em threads próprias → `MeshtasticLink` normaliza em eventos
 (`text`, `node`, `connected`, `disconnected`, `reconnect_failed`, `ack`) → a app faz marshal
 para a thread da UI via `call_from_thread`.
+
+## Licença
+
+[MIT](LICENSE) © Adson Alcântara
