@@ -1,0 +1,19 @@
+[project]
+name = "mesh-tui"
+version = "0.1.0"
+description = "TUI para redes Meshtastic usando o SDK Python e Textual"
+requires-python = ">=3.10"
+dependencies = [
+    "meshtastic>=2.5",
+    "textual>=0.80",
+]
+
+[project.scripts]
+mesh-tui = "mesh_tui.app:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["mesh_tui*"]
