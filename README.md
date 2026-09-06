@@ -1,44 +1,51 @@
 # mesh-tui
 
-TUI (interface de terminal) para redes [Meshtastic](https://meshtastic.org) construída com o
-[SDK Python oficial](https://github.com/meshtastic/python) e o framework [Textual](https://textual.textualize.io/).
+A TUI (terminal UI) for [Meshtastic](https://meshtastic.org) networks, built on the
+official [Python SDK](https://github.com/meshtastic/python) and the
+[Textual](https://textual.textualize.io/) framework.
 
-Conecte-se a um rádio via USB ou TCP, converse por canal ou mensagem direta, acompanhe os nós
-da malha com telemetria e posição — tudo sem sair do terminal.
+Connect to a radio over USB or TCP, chat on channels or direct messages, and keep an
+eye on the mesh with telemetry and position — all without leaving the terminal.
+The UI is available in English and Portuguese (`--lang pt`, or auto-detected from your
+locale).
 
-![mesh-tui em execução](docs/screenshot.svg)
+![mesh-tui running](docs/screenshot.svg)
 
-## Funcionalidades
+## Features
 
-- **Conexão serial ou TCP** — auto-detecção de portas ou host `ip[:porta]` (padrão 4403)
-- **Reconexão automática** — backoff exponencial (1s → 30s) quando o rádio ou a rede cai;
-  desconexão manual (F3) cancela as tentativas
-- **Confirmação de entrega** — cada mensagem enviada rastreia ACK/NAK (`✓` entregue, `✗`
-  falhou, `…` pendente)
-- **Histórico persistente** — SQLite em `~/.local/share/mesh_tui/history.db` (respeita
-  `XDG_DATA_HOME`); tudo sobrevive a reinícios
-- **Conversas separadas** — uma aba por canal (nome real, ex: LongFast) e abas de DM criadas
-  sob demanda, com badge de não lidas (`N2 (3)`)
-- **Tabela de nós** — SNR, hops, bateria e última vez visto, atualizada ao vivo
-- **Painel de detalhes do nó** — Enter na tabela abre papel, hardware, posição com
-  distância/direção do nó local (ex: `911 m a LSE`), telemetria do dispositivo (tensão, uso do
-  canal, uptime) e de ambiente (temperatura, umidade, pressão)
-- **Detecção de nó novo** — log + notificação quando um nó desconhecido aparece na malha
-- **Erros acionáveis** — sem permissão na serial? A mensagem diz como corrigir (`dialout`)
+- **Serial or TCP connection** — port auto-detection or `host[:port]` (default 4403)
+- **Automatic reconnection** — exponential backoff (1s → 30s) when the radio or the
+  network drops; a manual disconnect (F3) cancels retries
+- **Delivery confirmation** — every sent message tracks its ACK/NAK (`✓` delivered,
+  `✗` failed, `…` pending)
+- **Persistent history** — SQLite at `~/.local/share/mesh_tui/history.db` (honors
+  `XDG_DATA_HOME`); everything survives restarts
+- **Separate conversations** — one tab per channel (real name, e.g. LongFast) plus
+  DM tabs created on demand, with unread badges (`N2 (3)`)
+- **Node table** — SNR, hops, battery and last seen, updated live
+- **Node details panel** — Enter on the table opens role, hardware, position with
+  distance/direction from the local node (e.g. `911 m at SSE`), device telemetry
+  (voltage, channel utilization, uptime) and environment metrics (temperature,
+  humidity, pressure)
+- **New node detection** — log entry + notification when an unknown node joins the mesh
+- **Actionable errors** — no serial permission? The message tells you how to fix it
+  (`dialout`)
+- **Bilingual UI** — English and Portuguese; toggle live with `F7`, or set at
+  startup via `--lang` / locale auto-detection
 
-## Requisitos
+## Requirements
 
 - Python 3.10+
-- Um rádio Meshtastic acessível via USB (serial) ou TCP (nó com WiFi/ethernet)
+- A Meshtastic radio reachable over USB (serial) or TCP (node with WiFi/ethernet)
 
-## Instalação
+## Installation
 
 ```bash
 git clone <repo> mesh_tui && cd mesh_tui
-make install        # cria .venv e instala dependências + pacote em modo editável
+make install        # creates .venv and installs dependencies + package (editable)
 ```
 
-Ou manualmente:
+Or manually:
 
 ```bash
 python3 -m venv .venv
@@ -46,79 +53,86 @@ python3 -m venv .venv
 .venv/bin/pip install -e .
 ```
 
-Permissão de porta serial (Linux): adicione-se ao grupo `dialout` e refaça o login:
+Serial port permission (Linux): add yourself to the `dialout` group and log in again:
 
 ```bash
 sudo usermod -aG dialout $USER
 ```
 
-## Uso
+## Usage
 
 ```bash
-make run                          # abre a TUI; conecte com F2
+make run                          # launch the TUI; connect with F2
 make run-serial PORT=/dev/ttyUSB0
 make run-tcp HOST=192.168.1.50
 
-# ou diretamente
-mesh-tui --port /dev/ttyUSB0      # entry point instalado
+# or directly
+mesh-tui --port /dev/ttyUSB0      # installed entry point
 mesh-tui --host 192.168.1.50
+mesh-tui --lang pt                # Portuguese UI
 ```
 
-### Teclas
+The UI language defaults to auto-detection from `LANG`/`LC_ALL`; `--lang`
+(`en`/`pt`) overrides it.
 
-| Tecla              | Ação                                        |
-|--------------------|---------------------------------------------|
-| `F2`               | Conectar (diálogo serial/TCP)               |
-| `F3`               | Desconectar (cancela reconexão automática)  |
-| `F4`               | Atualizar lista de nós                      |
-| `enter` / `ctrl+s` | Enviar mensagem                             |
-| `enter` (tabela)   | Abrir detalhes do nó selecionado            |
-| `esc`              | Fechar diálogo/detalhes                     |
-| `ctrl+q`           | Sair                                        |
+### Keys
 
-### Conversas
+| Key                 | Action                                          |
+|---------------------|-------------------------------------------------|
+| `F2`                | Connect (serial/TCP dialog)                     |
+| `F3`                | Disconnect (cancels automatic reconnection)     |
+| `F4`                | Refresh node list                               |
+| `F7`                | Toggle UI language (English/Portuguese)         |
+| `enter` / `ctrl+s`  | Send message                                    |
+| `enter` (table)     | Open details for the selected node              |
+| `esc`               | Close dialog/details                            |
+| `ctrl+q`            | Quit                                            |
 
-- A **aba ativa** define o canal do envio (broadcast).
-- Selecione um **Destino** (nó específico) e envie para criar/trocar automaticamente para a
-  aba de DM com esse nó.
-- Mensagens diretas recebidas criam a aba da conversa e incrementam o badge de não lidas.
+### Conversations
 
-## Solução de problemas
+- The **active tab** sets the channel for broadcasts.
+- Pick a **Destination** (a specific node) and send to automatically create/switch to
+  the DM tab with that node.
+- Incoming direct messages create the conversation tab and bump the unread badge.
 
-| Mensagem                                 | Causa provável / solução                                    |
-|------------------------------------------|-------------------------------------------------------------|
-| sem permissão na porta serial            | `sudo usermod -aG dialout $USER` e refaça o login           |
-| porta serial não encontrada              | confira o caminho (`ls /dev/ttyUSB*`)                       |
-| porta serial ocupada                     | feche outro cliente Meshtastic usando o rádio               |
-| conexão TCP recusada                     | confira host/porta e se o nó aceita clientes TCP            |
-| múltiplas portas seriais detectadas      | escolha uma porta específica em vez de auto-detectar        |
+## Troubleshooting
 
-## Desenvolvimento
+| Message                                  | Likely cause / fix                                    |
+|------------------------------------------|-------------------------------------------------------|
+| no permission on the serial port         | `sudo usermod -aG dialout $USER` and log in again     |
+| serial port not found                    | check the path (`ls /dev/ttyUSB*`)                    |
+| serial port busy                         | close another Meshtastic client using the radio       |
+| TCP connection refused                   | check host/port and that the node accepts TCP clients |
+| multiple serial ports detected           | pick a specific port instead of auto-detect           |
+
+## Development
 
 ```bash
-make test        # testes headless (sem hardware)
-make check       # testes + verificação de import
+make test        # headless tests (no hardware required)
+make check       # tests + import verification
 make clean       # remove caches
 ```
 
-Os testes rodam a UI completa com `textual.run_test()` usando uma interface Meshtastic
-simulada — cobrem conexão, reconexão, ACKs, histórico, DMs e o painel de detalhes.
+The tests run the full UI with `textual.run_test()` against a simulated Meshtastic
+interface — they cover connection, reconnection, ACKs, history, DMs, the details
+panel and i18n.
 
-### Arquitetura
+### Architecture
 
-| Módulo                    | Responsabilidade                                            |
-|---------------------------|-------------------------------------------------------------|
-| `mesh_tui/app.py`         | UI Textual: abas, composer, tabela, diálogos, eventos       |
-| `mesh_tui/meshtastic_link.py` | Wrapper thread-safe do SDK: conexão, pubsub, reconexão, ACKs |
-| `mesh_tui/storage.py`     | Histórico persistente em SQLite                             |
-| `mesh_tui/nodeinfo.py`    | Posição (haversine/bearing), telemetria e painel de detalhes |
+| Module                    | Responsibility                                                |
+|---------------------------|---------------------------------------------------------------|
+| `mesh_tui/app.py`         | Textual UI: tabs, composer, node table, dialogs, events       |
+| `mesh_tui/meshtastic_link.py` | Thread-safe SDK wrapper: connection, pubsub, reconnect, ACKs |
+| `mesh_tui/storage.py`     | Persistent SQLite history                                     |
+| `mesh_tui/nodeinfo.py`    | Position (haversine/bearing), telemetry and details panel     |
+| `mesh_tui/i18n.py`        | English/Portuguese UI strings                                 |
 
-Fluxo de eventos: o SDK publica em threads próprias → `MeshtasticLink` normaliza em eventos
-(`text`, `node`, `connected`, `disconnected`, `reconnect_failed`, `ack`) → a app faz marshal
-para a thread da UI via `call_from_thread`.
+Event flow: the SDK publishes on its own threads → `MeshtasticLink` normalizes into
+events (`text`, `node`, `connected`, `disconnected`, `reconnect_failed`, `ack`) → the
+app marshals them to the UI thread via `call_from_thread`.
 
-## Licença
+## License
 
-[GPL-3.0](LICENSE) © Adson Alcântara — o mesmo copyleft do
-[SDK Python do Meshtastic](https://github.com/meshtastic/python), do qual este projeto é
-derivado.
+[GPL-3.0](LICENSE) © Adson Alcântara — the same copyleft as the
+[Meshtastic Python SDK](https://github.com/meshtastic/python), from which this
+project derives.

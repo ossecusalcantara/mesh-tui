@@ -1,4 +1,4 @@
-"""Testes headless (Textual run_test) com interface Meshtastic simulada."""
+"""Headless tests (Textual run_test) with a simulated Meshtastic interface."""
 
 from __future__ import annotations
 
@@ -9,9 +9,10 @@ import types
 from pathlib import Path
 
 from serial import SerialException
-from textual.widgets import DataTable, Select
+from textual.widgets import DataTable, Input, Select
 
 import meshtastic.serial_interface
+import mesh_tui.i18n as i18n
 import mesh_tui.meshtastic_link as mlink
 import mesh_tui.nodeinfo as nodeinfo
 from mesh_tui.app import MeshTuiApp, NodeDetailScreen
@@ -89,7 +90,7 @@ async def wait_until(predicate, timeout: float = 5.0, interval: float = 0.05) ->
 
 
 def drop_connection(app: MeshTuiApp, iface: FakeIface) -> None:
-    """Emula o comportamento real do SDK: limpa isConnected e publica conn.lost."""
+    """Mimic the real SDK: clears isConnected and publishes conn.lost."""
     iface.isConnected.clear()
     threading.Thread(
         target=lambda: app.link._on_conn_lost(interface=iface)
@@ -100,14 +101,14 @@ def test_describe_error() -> None:
     assert "dialout" in mlink.describe_error(
         PermissionError("[Errno 13] Permission denied")
     )
-    assert "múltiplas" in mlink.describe_error(SystemExit(1))
-    assert "não encontrada" in mlink.describe_error(
+    assert "multiple serial ports" in mlink.describe_error(SystemExit(1))
+    assert "not found" in mlink.describe_error(
         SerialException("could not open port '/dev/ttyX': [Errno 2] No such file or directory")
     )
-    assert "ocupada" in mlink.describe_error(
+    assert "busy" in mlink.describe_error(
         SerialException("could not open port '/dev/ttyUSB0': [Errno 16] Device or resource busy")
     )
-    assert "recusada" in mlink.describe_error(ConnectionRefusedError(111, "Connection refused"))
+    assert "refused" in mlink.describe_error(ConnectionRefusedError(111, "Connection refused"))
     print("DESCRIBE_ERROR OK")
 
 
@@ -153,13 +154,14 @@ def test_store() -> None:
 
 
 def test_nodeinfo() -> None:
+    i18n.set_language("en")
     assert nodeinfo.haversine_km(0, 0, 0, 0) == 0.0
     assert abs(nodeinfo.haversine_km(0, 0, 1, 0) - 111.19) < 0.5
     assert nodeinfo.compass(0) == "N"
     assert nodeinfo.compass(45) == "NE"
-    assert nodeinfo.compass(90) == "L"
+    assert nodeinfo.compass(90) == "E"
     assert nodeinfo.compass(180) == "S"
-    assert nodeinfo.compass(270) == "O"
+    assert nodeinfo.compass(270) == "W"
     assert nodeinfo.bearing_deg(0, 0, 1, 0) == 0
     assert abs(nodeinfo.bearing_deg(0, 0, 0, 1) - 90) < 0.01
     assert nodeinfo.uptime_desc(93720) == "1d 2h"
@@ -169,7 +171,7 @@ def test_nodeinfo() -> None:
     local = {"position": {"latitude": -23.5505, "longitude": -46.6333}}
     remote = {"position": {"latitude": -23.5535, "longitude": -46.6250}}
     dist = nodeinfo.distance_desc(remote, local)
-    assert dist is not None and (" m a " in dist or " km a " in dist), dist
+    assert dist is not None and "from local node" in dist, dist
     assert nodeinfo.distance_desc(remote, None) is None
 
     node = {
@@ -188,13 +190,48 @@ def test_nodeinfo() -> None:
     assert "Node Dois" in markup
     assert "!000003e7" in markup
     assert "CLIENT" in markup and "TBEAM" in markup
-    assert "bateria 81%" in markup and "4.12 V" in markup
-    assert "uso do canal 12.3%" in markup and "ar TX 3.4%" in markup
+    assert "battery 81%" in markup and "4.12 V" in markup
+    assert "channel use 12.3%" in markup and "TX air 3.4%" in markup
     assert "1d 2h" in markup
-    assert "25.4 °C" in markup and "60% UR" in markup
-    assert "Posição" in markup and "↳" in markup
-    assert "favorito" in markup
+    assert "25.4 °C" in markup and "60% RH" in markup
+    assert "Position" in markup and "↳" in markup
+    assert "favorite" in markup
     print("NODEINFO OK")
+
+
+def test_i18n() -> None:
+    i18n.set_language("en")
+    assert i18n.t("key.connect") == "Connect"
+    assert nodeinfo.compass(90) == "E"
+
+    i18n.set_language("pt")
+    assert i18n.t("key.connect") == "Conectar"
+    assert i18n.t("err.multiple.ports").startswith("múltiplas")
+    assert nodeinfo.compass(90) == "L"
+
+    local = {"position": {"latitude": -23.5505, "longitude": -46.6333}}
+    remote = {"position": {"latitude": -23.5535, "longitude": -46.6250}}
+    dist = nodeinfo.distance_desc(remote, local)
+    assert dist is not None and "do nó local" in dist, dist
+
+    node = {"user": {"shortName": "N2", "longName": "Node Dois"},
+            "position": {"latitude": -23.5535, "longitude": -46.6250, "altitude": 750},
+            "deviceMetrics": {"batteryLevel": 81, "voltage": 4.12},
+            "environmentMetrics": {"temperature": 25.4}}
+    markup = nodeinfo.render_details(999, node, local)
+    assert "bateria 81%" in markup and "25.4 °C" in markup
+    assert "Posição" in markup
+
+    try:
+        i18n.set_language("xx")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("set_language should reject unknown languages")
+    assert i18n.language() == "pt"
+
+    i18n.set_language("en")
+    print("I18N OK")
 
 
 async def run() -> None:
@@ -217,7 +254,7 @@ async def run() -> None:
             app._start_connect(("serial", "/dev/fake"))
             assert await wait_until(lambda: app.link.interface is fake), "connect não rodou"
             await pilot.pause()
-            assert app.SUB_TITLE == "conectado · EU", app.SUB_TITLE
+            assert app.SUB_TITLE == "connected · EU", app.SUB_TITLE
             assert await wait_until(lambda: app._titles.get("ch:0") == "LongFast")
 
             # 2. envio broadcast persiste com ack pendente
@@ -324,8 +361,8 @@ async def run() -> None:
             assert isinstance(app.screen, NodeDetailScreen), type(app.screen)
             markup = app.screen._markup
             assert "Node Dois" in markup, markup
-            assert "bateria 81%" in markup and "25.4 °C" in markup
-            assert "Posição" in markup and "↳" in markup
+            assert "battery 81%" in markup and "25.4 °C" in markup
+            assert "Position" in markup and "↳" in markup
             await pilot.press("escape")
             assert await wait_until(
                 lambda: not isinstance(app.screen, NodeDetailScreen)
@@ -340,6 +377,23 @@ async def run() -> None:
             app.link._on_node_updated(node=fake.nodesByNum[999], interface=fake)
             await asyncio.sleep(0.2)
             assert announced == [555], announced
+
+            # 10e. F7 toggles the UI language live
+            await pilot.press("f7")
+            await pilot.pause()
+            assert i18n.language() == "pt"
+            assert app.SUB_TITLE == "conectado · EU", app.SUB_TITLE
+            assert app.query_one("#dest-select", Select).prompt == "Destino"
+            assert app.query_one("#input-msg", Input).placeholder.startswith("Mensagem")
+            table = app.query_one(DataTable)
+            labels = [str(c.label) for c in table.columns.values()]
+            assert "Nó" in labels and "Bateria" in labels, labels
+            await pilot.press("f7")
+            await pilot.pause()
+            assert i18n.language() == "en"
+            assert app.SUB_TITLE == "connected · EU", app.SUB_TITLE
+            labels = [str(c.label) for c in table.columns.values()]
+            assert "Node" in labels and "Battery" in labels, labels
 
             # 11. queda de conexão reconecta automaticamente
             fake2 = FakeIface()
@@ -379,7 +433,7 @@ async def run() -> None:
             assert count_failures() == baseline, "retries continuaram após disconnect"
             assert not app.link.reconnecting
             assert not app.link.connected
-            assert app.SUB_TITLE == "desconectado"
+            assert app.SUB_TITLE == "disconnected"
 
         # 14. histórico sobrevive a reinício da aplicação
         store2 = MessageStore(db_path)
@@ -398,8 +452,10 @@ async def run() -> None:
 
 
 if __name__ == "__main__":
+    i18n.set_language("en")
     test_describe_error()
     test_connect_error_friendly()
     test_store()
     test_nodeinfo()
+    test_i18n()
     asyncio.run(run())

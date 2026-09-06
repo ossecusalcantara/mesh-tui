@@ -1,3 +1,3 @@
-"""meshtastic_tui - interface texto (TUI) para redes Meshtastic."""
+"""meshtastic_tui - terminal UI (TUI) for Meshtastic networks."""
 
 __version__ = "0.1.0"

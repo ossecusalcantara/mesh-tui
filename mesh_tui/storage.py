@@ -1,4 +1,4 @@
-"""Histórico de mensagens persistente em SQLite."""
+"""Persistent message history backed by SQLite."""
 
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ class Message:
 
 
 class MessageStore:
-    """Armazenamento do histórico de mensagens (thread-safe)."""
+    """Message history storage (thread-safe)."""
 
     def __init__(self, path: str | Path | None = None) -> None:
         path = Path(path) if path is not None else default_db_path()

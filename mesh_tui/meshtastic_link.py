@@ -1,4 +1,4 @@
-"""meshtastic_link - wrapper thread-safe em volta do SDK Python do Meshtastic."""
+"""meshtastic_link - thread-safe wrapper around the Meshtastic Python SDK."""
 
 from __future__ import annotations
 
@@ -12,6 +12,8 @@ from pubsub import pub
 import meshtastic
 import meshtastic.serial_interface
 import meshtastic.tcp_interface
+
+from . import i18n
 
 logger = logging.getLogger(__name__)
 
@@ -29,29 +31,26 @@ EventCallback = Callable[[str, dict[str, Any]], None]
 
 
 def describe_error(exc: BaseException) -> str:
-    """Traduz exceções de conexão em mensagens acionáveis para o usuário."""
+    """Translate connection errors into actionable user-facing messages."""
     if isinstance(exc, SystemExit):
-        return "múltiplas portas seriais detectadas — escolha uma porta específica"
+        return i18n.t("err.multiple.ports")
     message = str(exc) or type(exc).__name__
     lowered = message.lower()
     if isinstance(exc, PermissionError) or "permission denied" in lowered:
-        return (
-            "sem permissão na porta serial — adicione-se ao grupo 'dialout' "
-            "(sudo usermod -aG dialout $USER) e refaça o login"
-        )
+        return i18n.t("err.permission")
     if isinstance(exc, FileNotFoundError) or "no such file or directory" in lowered:
-        return "porta serial não encontrada — verifique o caminho (ex: /dev/ttyUSB0)"
+        return i18n.t("err.not.found")
     if isinstance(exc, ConnectionRefusedError) or "connection refused" in lowered:
-        return "conexão TCP recusada — confira o host e se o nó aceita clientes TCP"
+        return i18n.t("err.refused")
     if isinstance(exc, TimeoutError) or "timed out" in lowered or "timeout" in lowered:
-        return "tempo esgotado ao conectar — o nó está acessível?"
+        return i18n.t("err.timeout")
     if "device is busy" in lowered or "resource busy" in lowered or "errno 16" in lowered:
-        return "porta serial ocupada — feche outros programas usando o rádio"
+        return i18n.t("err.busy")
     return f"{type(exc).__name__}: {message}"
 
 
 def detect_serial_ports() -> list[str]:
-    """Retorna lista de portas seriais candidatas (pode ser vazia)."""
+    """Return candidate serial ports (may be empty)."""
     try:
         ports = meshtastic.util.findPorts()
         if isinstance(ports, str):
@@ -62,14 +61,13 @@ def detect_serial_ports() -> list[str]:
 
 
 class MeshtasticLink:
-    """Encapsula a interface do SDK Meshtastic e publica eventos para listeners.
+    """Wraps the Meshtastic SDK interface and publishes events to listeners.
 
-    - Reconecta automaticamente (backoff exponencial) quando a conexão cai.
-    - Rastreia ACKs de mensagens enviadas com wantAck.
+    - Reconnects automatically (exponential backoff) when the link drops.
+    - Tracks ACKs for messages sent with wantAck.
 
-    Os callbacks são sempre invocados em threads do SDK (leitura serial /
-    publishing thread) — o consumidor é responsável por fazer marshal para
-    a thread da UI.
+    Callbacks always run on SDK threads (serial reader / publishing thread) —
+    the consumer is responsible for marshalling to the UI thread.
     """
 
     def __init__(self) -> None:
@@ -103,7 +101,7 @@ class MeshtasticLink:
 
     # ------------------------------------------------------------ connections
     def connect(self, kind: str, target: str) -> None:
-        """Conecta ('serial', porta) | ('tcp', 'host[:porta]'). Bloqueante."""
+        """Connect ('serial', port) | ('tcp', 'host[:port]'). Blocking."""
         self._cancel_retries()
         try:
             self._attempt(kind, target)
@@ -113,7 +111,7 @@ class MeshtasticLink:
             raise ConnectionError(describe_error(exc)) from exc
         with self._lock:
             self._last_spec = (kind, target)
-        logger.info("Conectado: %s %s", kind, target or "auto")
+        logger.info("Connected: %s %s", kind, target or "auto")
 
     def connect_serial(self, port: str | None = None) -> None:
         self.connect("serial", port or "")
@@ -132,19 +130,21 @@ class MeshtasticLink:
         elif kind == "serial":
             iface = meshtastic.serial_interface.SerialInterface(devPath=target or None)
         else:
-            raise ConnectionError(f"tipo de conexão desconhecido: {kind}")
+            raise ConnectionError(i18n.t("err.unknown.kind", kind=kind))
         failure = getattr(iface, "failure", None)
         try:
             established = bool(iface.isConnected.is_set())
         except Exception:
             established = False
         if failure or not established:
-            reason = failure or "nenhum nó Meshtastic respondeu"
+            reason = failure or i18n.t("err.no.response")
             try:
                 iface.close()
             except Exception:
                 pass
-            raise ConnectionError(f"não foi possível conectar ({label}): {reason}")
+            raise ConnectionError(
+                i18n.t("err.connect.failed", label=label, reason=reason)
+            )
         with self._lock:
             self._interface = iface
         self._subscribe()
@@ -157,7 +157,7 @@ class MeshtasticLink:
         try:
             iface.close()
         except Exception as exc:
-            logger.debug("Erro ao fechar interface: %s", exc)
+            logger.debug("Error closing interface: %s", exc)
 
     def disconnect(self) -> None:
         self._cancel_retries()
@@ -224,16 +224,15 @@ class MeshtasticLink:
                 "reconnect_failed",
                 {"attempt": attempt, "error": error, "next_delay": delay},
             )
-            if not self._sleep_interruptible(delay, generation):
-                return
             delay = min(delay * 2.0, RECONNECT_MAX_DELAY)
+
     # --------------------------------------------------------------- messaging
     def send_text(
         self, text: str, channel_index: int = 0, destination: str = "^all"
     ) -> int | None:
         iface = self.interface
         if iface is None:
-            raise ConnectionError("Não conectado a nenhum nó.")
+            raise ConnectionError(i18n.t("err.not.connected"))
         packet = iface.sendText(
             text=text,
             destinationId=destination,
@@ -250,7 +249,7 @@ class MeshtasticLink:
         return int(packet_id) if packet_id else None
 
     def onAckNak(self, packet: dict[str, Any] | None = None) -> None:
-        """Callback do SDK (nome exigido pela convenção dele) para ACK/NAK."""
+        """SDK callback (name required by its convention) for ACK/NAK."""
         decoded = (packet or {}).get("decoded", {})
         request_id = decoded.get("requestId")
         text = ""
@@ -272,7 +271,7 @@ class MeshtasticLink:
         return dict(getattr(iface, "nodesByNum", None) or {})
 
     def channels(self) -> list[dict[str, Any]]:
-        """Canais habilitados do nó local: [{'index': int, 'name': str, 'role': str}]."""
+        """Enabled channels of the local node: [{'index', 'name', 'role'}]."""
         iface = self.interface
         if iface is None:
             return []
@@ -287,11 +286,11 @@ class MeshtasticLink:
                 name = getattr(ch.settings, "name", "") or f"CH{ch.index}"
                 out.append({"index": ch.index, "name": name, "role": role})
         except Exception as exc:
-            logger.debug("Falha ao ler canais: %s", exc)
+            logger.debug("Failed to read channels: %s", exc)
         return out
 
     def node_name(self, node_num: int | str | None) -> str:
-        """Resolve um número/ID de nó para nome amigável."""
+        """Resolve a node number/ID to a friendly name."""
         try:
             node_num_i = int(node_num)  # type: ignore[arg-type]
         except (TypeError, ValueError):
@@ -315,7 +314,7 @@ class MeshtasticLink:
             try:
                 callback(event, payload)
             except Exception:
-                logger.exception("Erro em listener de evento %s", event)
+                logger.exception("Error in listener for event %s", event)
 
     # ------------------------------------------------------------- pubsub glue
     def _subscribe(self) -> None:
@@ -371,6 +370,6 @@ class MeshtasticLink:
     def _on_node_packet(
         self, packet: dict[str, Any] | None = None, interface: Any = None
     ) -> None:
-        """Posição/telemetria recebida — o SDK já atualizou o nodeDB."""
+        """Position/telemetry packet — the SDK already updated the node DB."""
         if self._is_current(interface) and packet:
             self._emit("node", {"node": {"num": packet.get("from")}})

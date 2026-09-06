@@ -1,4 +1,4 @@
-"""Aplicação Textual principal do TUI Meshtastic."""
+"""Main Textual application for the Meshtastic TUI."""
 
 from __future__ import annotations
 
@@ -27,17 +27,29 @@ from textual.widgets import (
 )
 from textual.widgets._tabbed_content import ContentTab, ContentTabs
 
+from . import i18n
+from .i18n import t
 from .meshtastic_link import MeshtasticLink, detect_serial_ports
 from .nodeinfo import ago_desc, render_details
 from .storage import Message, MessageStore
 
 BROADCAST = "^all"
 
-MSG_HELP = "F2 conectar · F3 desconectar · F4 atualizar nós · ctrl+q sair"
+
+def _rebind(widget: Any, bindings: list[tuple[str, str, str]]) -> None:
+    """Re-create bindings on an instance so descriptions honor the language."""
+    for keys, action, description in bindings:
+        try:
+            for key in keys.split(","):
+                widget._bindings.key_to_bindings[key.strip()] = [
+                    Binding(key, action, description, show=True)
+                ]
+        except Exception:
+            pass
 
 
 class ConnectScreen(ModalScreen[tuple[str, str] | None]):
-    """Diálogo de conexão. Dismiss com ('serial', porta) | ('tcp', host) | None."""
+    """Connection dialog. Dismisses ('serial', port) | ('tcp', host) | None."""
 
     CSS = """
     ConnectScreen {
@@ -70,30 +82,22 @@ class ConnectScreen(ModalScreen[tuple[str, str] | None]):
     def __init__(self) -> None:
         super().__init__()
         self._ports = detect_serial_ports()
-
-    BINDINGS = [
-        Binding("escape", "cancel", "Cancelar"),
-    ]
+        _rebind(self, [("escape", "cancel", t("key.cancel"))])
 
     def action_cancel(self) -> None:
         self.dismiss(None)
 
-    def action_submit(self) -> None:
-        self._submit()
-
     def compose(self) -> ComposeResult:
-        port_options = [("Auto-detectar", "")] + [(p, p) for p in self._ports]
+        port_options = [("Auto-detect", "")] + [(p, p) for p in self._ports]
         with Vertical(id="connect-dialog"):
-            yield Static("Conectar ao nó Meshtastic", id="connect-title")
-            yield Static("Porta serial:", classes="label")
+            yield Static(t("connect.title"), id="connect-title")
+            yield Static(t("connect.serial.label"), classes="label")
             yield Select(port_options, id="serial-select", value="")
-            yield Static("Ou host TCP (ex: 192.168.1.50):", classes="label")
-            yield Input(placeholder="deixe vazio p/ usar serial", id="tcp-input")
-            yield Static(
-                "Preencha a porta serial OU o host TCP", id="connect-hint"
-            )
-            yield Button("Conectar [enter]", id="connect-btn", variant="primary")
-            yield Button("Cancelar [esc]", id="cancel-btn")
+            yield Static(t("connect.tcp.label"), classes="label")
+            yield Input(placeholder=t("connect.tcp.placeholder"), id="tcp-input")
+            yield Static(t("connect.hint"), id="connect-hint")
+            yield Button(t("connect.button"), id="connect-btn", variant="primary")
+            yield Button(t("connect.cancel"), id="cancel-btn")
 
     def on_mount(self) -> None:
         self.query_one("#serial-select", Select).focus()
@@ -117,7 +121,7 @@ class ConnectScreen(ModalScreen[tuple[str, str] | None]):
 
 
 class NodeDetailScreen(ModalScreen[None]):
-    """Painel com detalhes completos de um nó. Fechar com esc/enter."""
+    """Panel with full details for a node. Close with esc/enter."""
 
     CSS = """
     NodeDetailScreen {
@@ -133,13 +137,10 @@ class NodeDetailScreen(ModalScreen[None]):
     }
     """
 
-    BINDINGS = [
-        Binding("escape,enter", "close", "Fechar"),
-    ]
-
     def __init__(self, markup: str) -> None:
         super().__init__()
         self._markup = markup
+        _rebind(self, [("escape,enter", "close", t("key.close"))])
 
     def compose(self) -> ComposeResult:
         with VerticalScroll(id="node-detail"):
@@ -150,10 +151,9 @@ class NodeDetailScreen(ModalScreen[None]):
 
 
 class MeshTuiApp(App[None]):
-    """TUI para redes Meshtastic usando o SDK Python + Textual."""
+    """TUI for Meshtastic networks using the Python SDK + Textual."""
 
     TITLE = "Meshtastic TUI"
-    SUB_TITLE = "desconectado"
 
     CSS = """
     #body { height: 1fr; }
@@ -180,11 +180,12 @@ class MeshTuiApp(App[None]):
     """
 
     BINDINGS = [
-        Binding("f2", "connect", "Conectar"),
-        Binding("f3", "disconnect", "Desconectar"),
-        Binding("f4", "refresh_nodes", "Atualizar nós"),
-        Binding("ctrl+s", "send", "Enviar"),
-        Binding("ctrl+q", "quit", "Sair"),
+        Binding("f2", "connect", "Connect"),
+        Binding("f3", "disconnect", "Disconnect"),
+        Binding("f4", "refresh_nodes", "Refresh nodes"),
+        Binding("f7", "toggle_language", "Language"),
+        Binding("ctrl+s", "send", "Send"),
+        Binding("ctrl+q", "quit", "Quit"),
     ]
 
     def __init__(
@@ -196,6 +197,7 @@ class MeshTuiApp(App[None]):
         super().__init__()
         self._serial_port = serial_port
         self._tcp_host = tcp_host
+        self.SUB_TITLE = t("subtitle.disconnected")
         self._channel_labels: dict[int, str] = {0: "CH0"}
         self.link = MeshtasticLink()
         self.link.add_listener(self._on_link_event)
@@ -210,6 +212,20 @@ class MeshTuiApp(App[None]):
         self._written: dict[str, int] = {}
         self._known_nodes: set[int] = set()
         self._nodes_synced = False
+        self._rebind_keys()
+
+    def _rebind_keys(self) -> None:
+        _rebind(
+            self,
+            [
+                ("f2", "connect", t("key.connect")),
+                ("f3", "disconnect", t("key.disconnect")),
+                ("f4", "refresh_nodes", t("key.refresh_nodes")),
+                ("f7", "toggle_language", t("key.language")),
+                ("ctrl+s", "send", t("key.send")),
+                ("ctrl+q", "quit", t("key.quit")),
+            ],
+        )
 
     # --------------------------------------------------------------- compose
     def compose(self) -> ComposeResult:
@@ -219,26 +235,37 @@ class MeshTuiApp(App[None]):
                 yield TabbedContent(id="conversations")
                 with Horizontal(id="composer"):
                     yield Select(
-                        [("📡 Broadcast", BROADCAST)],
-                        prompt="Destino",
+                        [(t("composer.broadcast"), BROADCAST)],
+                        prompt=t("composer.destination"),
                         id="dest-select",
                         allow_blank=False,
                         value=BROADCAST,
                     )
                     yield Input(
-                        placeholder="Mensagem... (enter/ctrl+s envia)",
+                        placeholder=t("composer.placeholder"),
                         id="input-msg",
                     )
             yield DataTable(id="nodes")
-        yield Static("Desconectado — pressione F2 para conectar", id="status")
+        yield Static(t("welcome"), id="status")
         yield Footer()
 
     def on_mount(self) -> None:
+        self._setup_node_columns()
         table = self.query_one("#nodes", DataTable)
-        table.add_columns("Nó", "SNR", "Hops", "Bateria", "Visto")
         table.cursor_type = "row"
         self._ensure_tab("ch:0", "CH0")
-        self._system_log(MSG_HELP)
+        self._system_log(t("help.line"))
+
+    def _setup_node_columns(self) -> None:
+        table = self.query_one("#nodes", DataTable)
+        table.clear(columns=True)
+        table.add_columns(
+            t("col.node"),
+            t("col.snr"),
+            t("col.hops"),
+            t("col.battery"),
+            t("col.seen"),
+        )
 
     # ---------------------------------------------------------------- helpers
     def _set_status(self, text: str) -> None:
@@ -342,7 +369,7 @@ class MeshTuiApp(App[None]):
         self._bump_unread(conv)
 
     def _system_log(self, text: str, style: str = "b yellow") -> None:
-        self._write_line(self._active_conv, "sistema", text, style=style)
+        self._write_line(self._active_conv, t("actor.system"), text, style=style)
 
     def _render_stored(self, conv: str, msg: Message) -> None:
         stamp = datetime.datetime.fromtimestamp(msg.ts).strftime("%H:%M:%S")
@@ -368,9 +395,11 @@ class MeshTuiApp(App[None]):
             return
         kind, target = choice
         if kind == "tcp" and not target:
-            self._set_status("Host TCP vazio.")
+            self._set_status(t("status.tcp.empty"))
             return
-        self._set_status(f"Conectando ({kind}: {target or 'auto'})...")
+        self._set_status(
+            t("status.connecting", kind=kind, target=target or "auto")
+        )
         self._connect_worker(kind, target)
 
     @work(thread=True, exclusive=True, group="connect")
@@ -380,26 +409,66 @@ class MeshTuiApp(App[None]):
         except Exception as exc:
             self.call_from_thread(self._on_connect_error, str(exc))
         else:
-            # O evento 'established' pode ser publicado antes do subscribe,
-            # então sincronizamos a UI explicitamente após conectar.
+            # The 'established' event may be published before we subscribe,
+            # so sync the UI explicitly after connecting.
             self.call_from_thread(self._on_connected)
 
     def _on_connect_error(self, message: str) -> None:
-        self._set_status(f"Falha ao conectar: {message}")
+        self._set_status(t("status.connect.failed", message=message))
         self._system_log(message, style="b red")
 
     def action_disconnect(self) -> None:
         self.link.disconnect()
-        self.SUB_TITLE = "desconectado"
-        self._set_status("Desconectado — pressione F2 para conectar")
-        self._system_log("Desconectado.")
+        self.SUB_TITLE = t("subtitle.disconnected")
+        self._set_status(t("status.disconnected"))
+        self._system_log(t("log.disconnected"))
+
+    # ------------------------------------------------------------------ idioma
+    def action_toggle_language(self) -> None:
+        i18n.set_language(i18n.next_language())
+        self._apply_language()
+        self.notify(
+            t("notify.language", name=i18n.language_name()),
+            title=t("key.language"),
+        )
+
+    def _apply_language(self) -> None:
+        """Re-translate widgets that captured strings at compose time."""
+        self._rebind_keys()
+        self._refresh_status_bar()
+        select = self.query_one("#dest-select", Select)
+        select.prompt = t("composer.destination")
+        self._populate_destinations()
+        self.query_one("#input-msg", Input).placeholder = t("composer.placeholder")
+        self._setup_node_columns()
+        self._render_nodes()
+
+    def _refresh_status_bar(self) -> None:
+        if self.link.reconnecting:
+            self.SUB_TITLE = t("subtitle.disconnected")
+            self._set_status(t("status.lost.reconnecting"))
+        elif self.link.connected:
+            name = self.link.node_name(self._my_nodenum())
+            self.SUB_TITLE = t("subtitle.connected", name=name)
+            channels = (
+                ", ".join(
+                    self._channel_name(c["index"]) for c in self.link.channels()
+                )
+                or "CH0"
+            )
+            self._set_status(
+                t("status.connected", name=name, channels=channels)
+            )
+        else:
+            self.SUB_TITLE = t("subtitle.disconnected")
+            self._set_status(t("status.disconnected"))
 
     # ------------------------------------------------------------------ enviar
     def _node_title(self, node_ref: int | str | None) -> str:
         return self.link.node_name(node_ref)
 
     def _send_target(self) -> tuple[str, str, int]:
-        """Retorna (conversa, destino, canal) para o envio atual."""
+        """Return (conversation, destination, channel) for the current send."""
         active = self._active_conv
         if active.startswith("dm:"):
             dest = "!" + active[3:]
@@ -427,14 +496,14 @@ class MeshTuiApp(App[None]):
             ts=time.time(),
             conv=conv,
             author_id=str(my) if my is not None else "",
-            author_name="eu",
+            author_name=t("actor.me"),
             text=text,
             direction="sent",
             ack_state="pending",
         )
         self._row_conv[rowid] = conv
         self._send_worker(text, channel, destination, rowid)
-        self._write_line(conv, "eu", text, style="b cyan", ack=" [dim]…[/dim]")
+        self._write_line(conv, t("actor.me"), text, style="b cyan", ack=" [dim]…[/dim]")
 
     @work(thread=True, exclusive=True, group="send")
     def _send_worker(self, text: str, channel: int, destination: str, rowid: int) -> None:
@@ -442,7 +511,7 @@ class MeshTuiApp(App[None]):
             packet_id = self.link.send_text(text, channel, destination)
         except Exception as exc:
             self.call_from_thread(
-                self._system_log, f"falha ao enviar: {exc}", "b red"
+                self._system_log, t("log.send.failed", error=exc), "b red"
             )
         else:
             if packet_id is not None:
@@ -472,7 +541,7 @@ class MeshTuiApp(App[None]):
     def _populate_destinations(self) -> None:
         select = self.query_one("#dest-select", Select)
         current = select.value
-        options: list[tuple[str, str]] = [("📡 Broadcast", BROADCAST)]
+        options: list[tuple[str, str]] = [(t("composer.broadcast"), BROADCAST)]
         for num, node in sorted(self.link.nodes().items(), key=lambda kv: self._node_sort_key(kv[1])):
             user = node.get("user", {})
             name = user.get("longName") or user.get("shortName") or f"!{num:08x}"
@@ -490,7 +559,7 @@ class MeshTuiApp(App[None]):
     def action_refresh_nodes(self) -> None:
         self._render_nodes()
         self._populate_destinations()
-        self._set_status(f"Nós atualizados: {len(self.link.nodes())}")
+        self._set_status(t("status.nodes.refreshed", n=len(self.link.nodes())))
 
     def _render_nodes(self) -> None:
         table = self.query_one("#nodes", DataTable)
@@ -506,6 +575,22 @@ class MeshTuiApp(App[None]):
                 ago_desc(node.get("lastHeard")) or "-",
                 key=str(num),
             )
+
+    @staticmethod
+    def _fmt_num(value: Any, digits: int = 1) -> str:
+        try:
+            return f"{float(value):.{digits}f}"
+        except (TypeError, ValueError):
+            return "-"
+
+    @staticmethod
+    def _fmt_hops(value: Any) -> str:
+        return "-" if value is None else str(value)
+
+    @staticmethod
+    def _fmt_battery(node: dict[str, Any]) -> str:
+        level = (node.get("deviceMetrics") or {}).get("batteryLevel")
+        return "-" if level is None else f"{level:.0f}%"
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         try:
@@ -530,32 +615,18 @@ class MeshTuiApp(App[None]):
 
     def _announce_node(self, num: int) -> None:
         name = self.link.node_name(num)
-        self._system_log(f"Nó novo na rede: {name}")
-        self.notify(f"{name} entrou na rede", title="Nó novo")
-
-    @staticmethod
-    def _fmt_num(value: Any, digits: int = 1) -> str:
-        try:
-            return f"{float(value):.{digits}f}"
-        except (TypeError, ValueError):
-            return "-"
-
-    @staticmethod
-    def _fmt_hops(value: Any) -> str:
-        return "-" if value is None else str(value)
-
-    @staticmethod
-    def _fmt_battery(node: dict[str, Any]) -> str:
-        level = (node.get("deviceMetrics") or {}).get("batteryLevel")
-        return "-" if level is None else f"{level:.0f}%"
+        self._system_log(t("log.new.node", name=name))
+        self.notify(
+            t("notify.new.node", name=name), title=t("notify.new.node.title")
+        )
 
     # --------------------------------------------------------- eventos do link
     def _on_link_event(self, event: str, payload: dict[str, Any]) -> None:
-        """Chamado por threads do SDK — faz marshal para a thread da UI."""
+        """Called by SDK threads — marshals to the UI thread."""
         try:
             self.call_from_thread(self._dispatch_event, event, payload)
         except RuntimeError:
-            # Já estamos na thread da UI (evento síncrono).
+            # Already on the UI thread (synchronous event).
             self.call_after_refresh(self._dispatch_event, event, payload)
 
     def _dispatch_event(self, event: str, payload: dict[str, Any]) -> None:
@@ -566,21 +637,23 @@ class MeshTuiApp(App[None]):
         elif event == "disconnected":
             if self.link.connected:
                 return
-            self.SUB_TITLE = "desconectado"
+            self.SUB_TITLE = t("subtitle.disconnected")
             if self.link.reconnecting:
-                self._set_status("Conexão perdida — reconectando automaticamente...")
-                self._system_log("Conexão perdida. Reconectando...")
+                self._set_status(t("status.lost.reconnecting"))
+                self._system_log(t("log.lost.reconnecting"))
             else:
-                self._set_status("Conexão perdida.")
-                self._system_log("Conexão perdida.")
+                self._set_status(t("status.lost"))
+                self._system_log(t("log.lost"))
         elif event == "reconnect_failed":
             if self.link.connected:
                 return
             self._set_status(
-                f"Reconectando (tentativa {payload.get('attempt', '?')})..."
+                t("status.reconnecting", n=payload.get("attempt", "?"))
             )
             if int(payload.get("attempt") or 0) <= 3:
-                self._system_log(f"Reconexão falhou: {payload.get('error', '?')}")
+                self._system_log(
+                    t("log.reconnect.failed", error=payload.get("error", "?"))
+                )
         elif event == "ack":
             self._on_ack(payload)
         elif event == "node":
@@ -590,7 +663,7 @@ class MeshTuiApp(App[None]):
 
     def _on_connected(self) -> None:
         node_name = self.link.node_name(self._my_nodenum())
-        self.SUB_TITLE = f"conectado · {node_name}"
+        self.SUB_TITLE = t("subtitle.connected", name=node_name)
         self._populate_channels()
         self._render_nodes()
         self._populate_destinations()
@@ -599,8 +672,10 @@ class MeshTuiApp(App[None]):
         channels = ", ".join(
             self._channel_name(c["index"]) for c in self.link.channels()
         ) or "CH0"
-        self._set_status(f"Conectado como {node_name} · canais: {channels}")
-        self._system_log(f"Conectado como {node_name}.", style="b green")
+        self._set_status(
+            t("status.connected", name=node_name, channels=channels)
+        )
+        self._system_log(t("log.connected", name=node_name), style="b green")
 
     def _my_nodenum(self) -> int | None:
         iface = self.link.interface
@@ -675,9 +750,19 @@ class MeshTuiApp(App[None]):
         text = (payload.get("text") or "").strip()
         snippet = f' "{text[:40]}"' if text else ""
         if error == "NONE":
-            self._write_line(conv, "ack", f"entregue para {name}{snippet}", style="green")
+            self._write_line(
+                conv,
+                "ack",
+                t("ack.delivered", name=name, snippet=snippet),
+                style="green",
+            )
         else:
-            self._write_line(conv, "nak", f"não entregue para {name} ({error}){snippet}", style="b red")
+            self._write_line(
+                conv,
+                "nak",
+                t("ack.not.delivered", name=name, reason=error, snippet=snippet),
+                style="b red",
+            )
 
     # ---------------------------------------------------------------- shutdown
     def on_unmount(self) -> None:
@@ -686,12 +771,24 @@ class MeshTuiApp(App[None]):
 
 
 def main(argv: list[str] | None = None) -> None:
+    pre = argparse.ArgumentParser(add_help=False)
+    pre.add_argument("--lang")
+    known, _ = pre.parse_known_args(argv)
+    i18n.set_language(known.lang or i18n.detect())
     parser = argparse.ArgumentParser(
-        prog="mesh-tui", description="TUI para redes Meshtastic (SDK Python + Textual)."
+        prog="mesh-tui", description=t("app.description")
     )
-    parser.add_argument("--port", help="porta serial do rádio (ex: /dev/ttyUSB0)")
-    parser.add_argument("--host", help="host TCP do nó (ex: 192.168.1.50[:4403])")
+    parser.add_argument("--port", help=t("cli.help.port"))
+    parser.add_argument("--host", help=t("cli.help.host"))
+    parser.add_argument(
+        "--lang",
+        choices=sorted(i18n.LANGUAGES),
+        default=None,
+        help=t("cli.help.lang"),
+    )
     args = parser.parse_args(argv)
+    if args.lang:
+        i18n.set_language(args.lang)
     MeshTuiApp(serial_port=args.port, tcp_host=args.host).run()
 
 
