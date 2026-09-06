@@ -3,7 +3,7 @@ name = "mesh-tui"
 version = "0.1.0"
 description = "TUI para redes Meshtastic usando o SDK Python e Textual"
 requires-python = ">=3.10"
-license = "MIT"
+license = "GPL-3.0-only"
 license-files = ["LICENSE"]
 authors = [{ name = "Adson Alcântara" }]
 dependencies = [

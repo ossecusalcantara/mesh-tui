@@ -119,4 +119,6 @@ para a thread da UI via `call_from_thread`.
 
 ## Licença
 
-[MIT](LICENSE) © Adson Alcântara
+[GPL-3.0](LICENSE) © Adson Alcântara — o mesmo copyleft do
+[SDK Python do Meshtastic](https://github.com/meshtastic/python), do qual este projeto é
+derivado.
